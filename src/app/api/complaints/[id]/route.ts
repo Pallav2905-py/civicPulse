@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getComplaintById, updateComplaint, upvoteComplaint, getStatusUpdates, createStatusUpdate, getFeedback, createFeedback } from "@/lib/db";
 import { sendResolutionEmail } from "@/lib/mail";
+import { isTelegramUser, notifyTelegramStatusUpdate } from "@/lib/telegram";
 
 export async function GET(
     request: NextRequest,
@@ -52,14 +53,23 @@ export async function PATCH(
         const updates: any = { status: body.status };
         if (body.status === "RESOLVED") {
             updates.resolvedAt = new Date().toISOString();
-            // Trigger email notification
-            // We interpret 'userName' as email for email-based submissions, 
-            // or we might need to fetch the user profile if it's a registered user.
-            // For now, assuming c.userName or a new field c.userEmail is the email.
-            // Since our schema only has userName (which is often email), we'll try that.
+            // Trigger email notification for web users
             if (complaint.userName && complaint.userName.includes("@")) {
                 await sendResolutionEmail(complaint.userName, id, complaint.title);
             }
+        }
+
+        // Notify Telegram users on every status change
+        if (complaint.userId && isTelegramUser(complaint.userId)) {
+            await notifyTelegramStatusUpdate({
+                chatId: complaint.userId,
+                complaintId: id,
+                complaintTitle: complaint.title,
+                oldStatus: complaint.status,
+                newStatus: body.status,
+                comment: body.comment,
+                updatedByName: body.updatedByName || "Admin",
+            });
         }
 
         const updated = await updateComplaint(id, updates);
