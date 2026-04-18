@@ -20,6 +20,60 @@ export type ComplaintStatus =
 
 export type UserRole = "citizen" | "admin" | "dept_officer";
 
+// ===== SENTIMENT TYPES =====
+export type SentimentLabel = "POSITIVE" | "NEUTRAL" | "FRUSTRATED" | "DISTRESSED" | "ANGRY";
+
+export interface SentimentResult {
+    label: SentimentLabel;
+    score: number;           // 0.0–1.0 confidence
+    emotionTags: string[];   // e.g. ["worried", "exhausted", "hopeful"]
+    empathyNote: string;     // AI-generated one-line empathy suggestion for officer
+}
+
+export const SENTIMENT_CONFIG: Record<SentimentLabel, {
+    emoji: string;
+    color: string;
+    bg: string;
+    border: string;
+    description: string;
+}> = {
+    POSITIVE: {
+        emoji: "😊",
+        color: "#10b981",
+        bg: "rgba(16, 185, 129, 0.12)",
+        border: "rgba(16, 185, 129, 0.35)",
+        description: "Citizen is cooperative and hopeful",
+    },
+    NEUTRAL: {
+        emoji: "😐",
+        color: "#94a3b8",
+        bg: "rgba(148, 163, 184, 0.12)",
+        border: "rgba(148, 163, 184, 0.35)",
+        description: "Citizen is matter-of-fact and calm",
+    },
+    FRUSTRATED: {
+        emoji: "😤",
+        color: "#f97316",
+        bg: "rgba(249, 115, 22, 0.12)",
+        border: "rgba(249, 115, 22, 0.35)",
+        description: "Citizen shows irritation — respond promptly",
+    },
+    DISTRESSED: {
+        emoji: "😰",
+        color: "#8b5cf6",
+        bg: "rgba(139, 92, 246, 0.12)",
+        border: "rgba(139, 92, 246, 0.35)",
+        description: "Citizen is anxious or distressed — prioritize empathy",
+    },
+    ANGRY: {
+        emoji: "😡",
+        color: "#ef4444",
+        bg: "rgba(239, 68, 68, 0.12)",
+        border: "rgba(239, 68, 68, 0.35)",
+        description: "Citizen is very upset — escalate with care",
+    },
+};
+
 export interface User {
     id: string;
     name: string;
@@ -53,6 +107,11 @@ export interface Complaint {
     createdAt: string;
     updatedAt: string;
     resolvedAt?: string;
+    // Sentiment fields
+    sentimentLabel?: SentimentLabel;
+    sentimentScore?: number;
+    emotionTags?: string[];
+    empathyNote?: string;
 }
 
 export interface StatusUpdate {
@@ -82,6 +141,15 @@ export interface ClassificationResult {
     affectedAreaSize: "SMALL" | "MEDIUM" | "LARGE";
     estimatedPeopleAffected: number;
     summary: string;
+}
+
+export interface SentimentAnalyticsData {
+    totalAnalyzed: number;
+    distribution: { label: SentimentLabel; count: number; percentage: number }[];
+    trend: { date: string; POSITIVE: number; NEUTRAL: number; FRUSTRATED: number; DISTRESSED: number; ANGRY: number }[];
+    topDistressed: Complaint[];
+    avgScore: number;
+    dominantEmotion: SentimentLabel;
 }
 
 export interface AnalyticsData {

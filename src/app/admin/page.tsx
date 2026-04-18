@@ -9,7 +9,7 @@ import {
 } from "recharts";
 import {
     CATEGORY_LABELS, CATEGORY_ICONS,
-    PRIORITY_COLORS, STATUS_COLORS,
+    PRIORITY_COLORS, STATUS_COLORS, SENTIMENT_CONFIG,
     type Complaint, type AnalyticsData,
 } from "@/lib/types";
 
@@ -269,6 +269,7 @@ export default function AdminPage() {
                                         <th>ID</th>
                                         <th>Title</th>
                                         <th>Category</th>
+                                        <th>Sentiment</th>
                                         <th>Priority</th>
                                         <th>Status</th>
                                         <th>Assigned To</th>
@@ -317,6 +318,14 @@ export default function AdminPage() {
                                                 </td>
                                                 <td>
                                                     <span className="badge badge-category">{CATEGORY_LABELS[c.category]}</span>
+                                                </td>
+                                                <td>
+                                                    {c.sentimentLabel ? (
+                                                        <span title={SENTIMENT_CONFIG[c.sentimentLabel]?.description}
+                                                            style={{ fontSize: "1.2rem", cursor: "default" }}>
+                                                            {SENTIMENT_CONFIG[c.sentimentLabel]?.emoji}
+                                                        </span>
+                                                    ) : <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>—</span>}
                                                 </td>
                                                 <td>
                                                     <span className={`badge badge-${c.priority.toLowerCase()}`}>

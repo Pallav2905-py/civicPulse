@@ -15,6 +15,7 @@ export function Navbar() {
                 <li><Link href="/">Home</Link></li>
                 <li><Link href="/submit">Report Issue</Link></li>
                 <li><Link href="/map">🗺️ Map</Link></li>
+                <li><Link href="/sentiment">💬 Sentiment</Link></li>
                 <li><Link href="/dashboard">My Complaints</Link></li>
                 <li><Link href="/admin">Admin Panel</Link></li>
                 <AuthNav />

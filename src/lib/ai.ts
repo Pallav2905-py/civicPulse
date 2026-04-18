@@ -1,5 +1,5 @@
 import Groq from "groq-sdk";
-import { ClassificationResult, ComplaintCategory, DEPARTMENT_MAP } from "./types";
+import { ClassificationResult, ComplaintCategory, DEPARTMENT_MAP, SentimentLabel, SentimentResult } from "./types";
 
 // Initialize Groq
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || "" });
@@ -30,6 +30,23 @@ Guidelines for urgency (IMPORTANT - follow these closely):
 
 Return ONLY the JSON object, no markdown, no extra text.`;
 
+const SENTIMENT_PROMPT = `You are an empathy-aware NLP sentiment analyzer for a civic grievance platform.
+
+Analyze the emotional tone of the following citizen complaint and return a JSON object with these exact fields:
+- "label": one of: POSITIVE, NEUTRAL, FRUSTRATED, DISTRESSED, ANGRY
+  * POSITIVE: citizen is cooperative, hopeful, or grateful even while reporting an issue
+  * NEUTRAL: calm, factual, no strong emotion
+  * FRUSTRATED: mild to moderate irritation, impatience — common in repeat/ignored issues
+  * DISTRESSED: anxious, worried, scared, helpless — safety/health concerns
+  * ANGRY: very upset, uses strong language, feels ignored or wronged
+- "score": confidence float 0.0–1.0
+- "emotionTags": array of 2–4 short lowercase emotion words detected (e.g. ["worried", "exhausted", "hopeful", "urgent"])
+- "empathyNote": a single, concise sentence written for the municipal officer explaining how to respond empathetically (max 20 words)
+
+Focus ONLY on the emotional tone, not the complaint topic.
+Return ONLY the JSON object, no markdown, no extra text.`;
+
+// ===== CLASSIFICATION =====
 export async function classifyComplaint(title: string, description: string): Promise<ClassificationResult> {
     try {
         const chatCompletion = await groq.chat.completions.create({
@@ -67,6 +84,41 @@ export async function classifyComplaint(title: string, description: string): Pro
     } catch (error) {
         console.error("Groq classification failed, using fallback:", error);
         return fallbackClassify(title, description);
+    }
+}
+
+// ===== SENTIMENT ANALYSIS =====
+export async function analyzeSentiment(title: string, description: string): Promise<SentimentResult> {
+    try {
+        const chatCompletion = await groq.chat.completions.create({
+            messages: [
+                { role: "system", content: SENTIMENT_PROMPT },
+                { role: "user", content: `Complaint Title: ${title}\nComplaint Description: ${description}` },
+            ],
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.3,
+            response_format: { type: "json_object" },
+        });
+
+        const text = chatCompletion.choices[0]?.message?.content?.trim() || "{}";
+        const jsonStr = text.replace(/^```json?\n?/i, "").replace(/\n?```$/i, "").trim();
+        const parsed = JSON.parse(jsonStr);
+
+        const validLabels: SentimentLabel[] = ["POSITIVE", "NEUTRAL", "FRUSTRATED", "DISTRESSED", "ANGRY"];
+
+        return {
+            label: validLabels.includes(parsed.label) ? parsed.label : "NEUTRAL",
+            score: Math.min(1, Math.max(0, Number(parsed.score) || 0.5)),
+            emotionTags: Array.isArray(parsed.emotionTags)
+                ? parsed.emotionTags.slice(0, 4).map((t: unknown) => String(t).toLowerCase())
+                : [],
+            empathyNote: parsed.empathyNote
+                ? String(parsed.empathyNote).slice(0, 200)
+                : "Acknowledge the citizen's concern and provide a clear timeline for resolution.",
+        };
+    } catch (error) {
+        console.error("Groq sentiment analysis failed, using fallback:", error);
+        return fallbackSentiment(title, description);
     }
 }
 
@@ -127,6 +179,44 @@ function fallbackClassify(title: string, description: string): ClassificationRes
         affectedAreaSize,
         estimatedPeopleAffected: peopleMap[affectedAreaSize],
         summary: `Detected ${bestCategory.replace("_", " ").toLowerCase()} issue with ${urgencyLevel.toLowerCase()} urgency.`,
+    };
+}
+
+function fallbackSentiment(title: string, description: string): SentimentResult {
+    const text = `${title} ${description}`.toLowerCase();
+
+    const sentimentKeywords: Record<SentimentLabel, string[]> = {
+        ANGRY: ["angry", "furious", "outraged", "disgusting", "unacceptable", "pathetic", "useless", "fed up", "worst", "terrible", "horrible"],
+        DISTRESSED: ["scared", "afraid", "dangerous", "help", "urgent", "emergency", "worried", "anxious", "panic", "helpless", "desperate", "fear"],
+        FRUSTRATED: ["frustrated", "tired", "again", "still", "months", "weeks", "ignored", "nothing done", "no response", "repeatedly", "keep complaining"],
+        POSITIVE: ["thank", "appreciate", "good work", "great", "glad", "hope", "please", "kindly", "request"],
+        NEUTRAL: [],
+    };
+
+    let bestLabel: SentimentLabel = "NEUTRAL";
+    let bestScore = 0;
+    for (const [label, keywords] of Object.entries(sentimentKeywords)) {
+        let score = 0;
+        for (const kw of keywords) { if (text.includes(kw)) score++; }
+        if (score > bestScore) {
+            bestScore = score;
+            bestLabel = label as SentimentLabel;
+        }
+    }
+
+    const empathyNotes: Record<SentimentLabel, string> = {
+        ANGRY: "Respond with immediate acknowledgment and a concrete action timeline to de-escalate.",
+        DISTRESSED: "Prioritize this case and reach out proactively — citizen feels unsafe.",
+        FRUSTRATED: "Acknowledge the delay and provide a specific updated timeline.",
+        POSITIVE: "Thank the citizen and maintain the positive experience with timely updates.",
+        NEUTRAL: "Respond professionally with expected resolution steps and timeline.",
+    };
+
+    return {
+        label: bestLabel,
+        score: bestScore > 0 ? Math.min(0.85, 0.55 + bestScore * 0.1) : 0.5,
+        emotionTags: [],
+        empathyNote: empathyNotes[bestLabel],
     };
 }
 

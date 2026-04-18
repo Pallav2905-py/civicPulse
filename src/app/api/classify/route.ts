@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { classifyComplaint, calculatePriorityScore, getDepartment, getEstimatedResolution } from "@/lib/ai";
+import { classifyComplaint, calculatePriorityScore, getDepartment, getEstimatedResolution, analyzeSentiment } from "@/lib/ai";
 
 export async function POST(request: Request) {
     try {
@@ -13,7 +13,12 @@ export async function POST(request: Request) {
             );
         }
 
-        const classification = await classifyComplaint(title || "", description || "");
+        // Run both in parallel for the real-time preview
+        const [classification, sentiment] = await Promise.all([
+            classifyComplaint(title || "", description || ""),
+            analyzeSentiment(title || "", description || ""),
+        ]);
+
         const priority = calculatePriorityScore(
             classification.urgencyLevel,
             classification.affectedAreaSize,
@@ -27,6 +32,7 @@ export async function POST(request: Request) {
             priority,
             department,
             estimatedResolution,
+            sentiment,
         });
     } catch {
         return NextResponse.json(

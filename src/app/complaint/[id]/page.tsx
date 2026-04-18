@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import {
     CATEGORY_LABELS,
     CATEGORY_ICONS,
-    DEPARTMENT_MAP,
+    SENTIMENT_CONFIG,
     type Complaint,
     type StatusUpdate,
     type Feedback,
@@ -23,6 +23,7 @@ export default function ComplaintDetailPage({
     const [updates, setUpdates] = useState<StatusUpdate[]>([]);
     const [feedback, setFeedback] = useState<Feedback | null>(null);
     const [loading, setLoading] = useState(true);
+    const [backfilling, setBackfilling] = useState(false);
 
     // Feedback form state
     const [showFeedback, setShowFeedback] = useState(false);
@@ -64,6 +65,31 @@ export default function ComplaintDetailPage({
             alert("Failed to submit feedback");
         } finally {
             setSubmittingFeedback(false);
+        }
+    };
+
+    const handleBackfillSentiment = async () => {
+        setBackfilling(true);
+        try {
+            const res = await fetch("/api/sentiment", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id }),
+            });
+            const data = await res.json();
+            if (data.success && complaint) {
+                setComplaint({
+                    ...complaint,
+                    sentimentLabel: data.sentiment.label,
+                    sentimentScore: data.sentiment.score,
+                    emotionTags: data.sentiment.emotionTags,
+                    empathyNote: data.sentiment.empathyNote,
+                });
+            }
+        } catch {
+            alert("Failed to analyze sentiment");
+        } finally {
+            setBackfilling(false);
         }
     };
 
@@ -110,6 +136,8 @@ export default function ComplaintDetailPage({
         );
     }
 
+    const sentimentCfg = complaint.sentimentLabel ? SENTIMENT_CONFIG[complaint.sentimentLabel] : null;
+
     return (
         <div className="page-container">
             <motion.div
@@ -132,8 +160,16 @@ export default function ComplaintDetailPage({
                         {/* Header */}
                         <div className="card" style={{ marginBottom: "1rem" }}>
                             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", marginBottom: "1rem" }}>
-                                <h1 style={{ fontSize: "1.4rem", fontWeight: 700, lineHeight: 1.3 }}>
+                                <h1 style={{ fontSize: "1.4rem", fontWeight: 700, lineHeight: 1.3, display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                                     {CATEGORY_ICONS[complaint.category]} {complaint.title}
+                                    {sentimentCfg && (
+                                        <span
+                                            title={`Sentiment: ${complaint.sentimentLabel}`}
+                                            style={{ fontSize: "1.2rem", cursor: "default" }}
+                                        >
+                                            {sentimentCfg.emoji}
+                                        </span>
+                                    )}
                                 </h1>
                                 <span style={{ color: "var(--text-muted)", fontSize: "0.85rem", whiteSpace: "nowrap" }}>
                                     {complaint.id}
@@ -150,6 +186,18 @@ export default function ComplaintDetailPage({
                                 <span className="badge badge-category">
                                     {CATEGORY_LABELS[complaint.category]}
                                 </span>
+                                {sentimentCfg && (
+                                    <span
+                                        className="badge"
+                                        style={{
+                                            background: sentimentCfg.bg,
+                                            color: sentimentCfg.color,
+                                            border: `1px solid ${sentimentCfg.border}`,
+                                        }}
+                                    >
+                                        {sentimentCfg.emoji} {complaint.sentimentLabel}
+                                    </span>
+                                )}
                             </div>
 
                             <p style={{ color: "var(--text-secondary)", lineHeight: 1.7 }}>
@@ -343,6 +391,92 @@ export default function ComplaintDetailPage({
                                     <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
                                         Target: {formatDate(complaint.estimatedResolution)}
                                     </p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Sentiment Card */}
+                        <div
+                            className="card"
+                            style={sentimentCfg ? {
+                                background: sentimentCfg.bg,
+                                borderColor: sentimentCfg.border,
+                            } : {}}
+                        >
+                            <h3 style={{ marginBottom: "0.75rem", fontSize: "1rem" }}>💬 Sentiment Analysis</h3>
+
+                            {sentimentCfg && complaint.sentimentLabel ? (
+                                <div>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem" }}>
+                                        <span style={{ fontSize: "2rem" }}>{sentimentCfg.emoji}</span>
+                                        <div>
+                                            <div style={{ fontWeight: 700, color: sentimentCfg.color, fontSize: "1rem" }}>
+                                                {complaint.sentimentLabel}
+                                            </div>
+                                            <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                                                {sentimentCfg.description}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Score bar */}
+                                    {complaint.sentimentScore !== undefined && (
+                                        <div style={{ marginBottom: "0.75rem" }}>
+                                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: "0.3rem" }}>
+                                                <span>Confidence</span>
+                                                <span>{Math.round(complaint.sentimentScore * 100)}%</span>
+                                            </div>
+                                            <div className="sentiment-bar">
+                                                <div
+                                                    className="sentiment-bar-fill"
+                                                    style={{
+                                                        width: `${Math.round(complaint.sentimentScore * 100)}%`,
+                                                        background: sentimentCfg.color,
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Emotion tags */}
+                                    {complaint.emotionTags && complaint.emotionTags.length > 0 && (
+                                        <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
+                                            {complaint.emotionTags.map((tag) => (
+                                                <span
+                                                    key={tag}
+                                                    className="emotion-tag"
+                                                    style={{ borderColor: sentimentCfg.border, color: sentimentCfg.color }}
+                                                >
+                                                    {tag}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Empathy note */}
+                                    {complaint.empathyNote && (
+                                        <p style={{ fontSize: "0.82rem", color: "var(--text-secondary)", fontStyle: "italic", borderTop: `1px solid ${sentimentCfg.border}`, paddingTop: "0.6rem", margin: 0 }}>
+                                            💬 {complaint.empathyNote}
+                                        </p>
+                                    )}
+                                </div>
+                            ) : (
+                                <div>
+                                    <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "0.75rem" }}>
+                                        Sentiment not yet analyzed for this complaint.
+                                    </p>
+                                    <button
+                                        className="btn btn-secondary btn-sm"
+                                        onClick={handleBackfillSentiment}
+                                        disabled={backfilling}
+                                        style={{ width: "100%", justifyContent: "center" }}
+                                    >
+                                        {backfilling ? (
+                                            <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Analyzing...</>
+                                        ) : (
+                                            "🧠 Analyze Sentiment"
+                                        )}
+                                    </button>
                                 </div>
                             )}
                         </div>

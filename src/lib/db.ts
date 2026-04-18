@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { Complaint, ComplaintStatus, Feedback, StatusUpdate, AnalyticsData } from "./types";
+import { Complaint, ComplaintStatus, Feedback, StatusUpdate, AnalyticsData, SentimentLabel, SentimentAnalyticsData } from "./types";
 
 // Helper: convert snake_case DB row to camelCase Complaint
 function rowToComplaint(row: Record<string, unknown>): Complaint {
@@ -25,6 +25,11 @@ function rowToComplaint(row: Record<string, unknown>): Complaint {
         createdAt: row.created_at as string,
         updatedAt: row.updated_at as string,
         resolvedAt: row.resolved_at as string | undefined,
+        // Sentiment fields
+        sentimentLabel: (row.sentiment_label as SentimentLabel) || undefined,
+        sentimentScore: row.sentiment_score as number | undefined,
+        emotionTags: (row.emotion_tags as string[]) || [],
+        empathyNote: row.empathy_note as string | undefined,
     };
 }
 
@@ -123,6 +128,11 @@ export async function createComplaint(data: Omit<Complaint, "id">): Promise<Comp
         created_at: data.createdAt,
         updated_at: data.updatedAt,
         resolved_at: data.resolvedAt || null,
+        // Sentiment
+        sentiment_label: data.sentimentLabel || "NEUTRAL",
+        sentiment_score: data.sentimentScore ?? 0.5,
+        emotion_tags: data.emotionTags || [],
+        empathy_note: data.empathyNote || "",
     };
 
     const { data: inserted, error } = await supabase
@@ -434,4 +444,98 @@ export async function getAnalytics(): Promise<AnalyticsData> {
         trend,
         departmentPerformance,
     };
+}
+
+// ===== SENTIMENT ANALYTICS =====
+
+export async function getSentimentAnalytics(): Promise<SentimentAnalyticsData> {
+    const { data: complaints, error } = await supabase
+        .from("complaints")
+        .select("*");
+
+    const empty: SentimentAnalyticsData = {
+        totalAnalyzed: 0,
+        distribution: [],
+        trend: [],
+        topDistressed: [],
+        avgScore: 0,
+        dominantEmotion: "NEUTRAL",
+    };
+
+    if (error || !complaints) return empty;
+
+    const all = complaints.map(rowToComplaint);
+    const analyzed = all.filter((c) => c.sentimentLabel);
+    if (analyzed.length === 0) return empty;
+
+    const labels: SentimentLabel[] = ["POSITIVE", "NEUTRAL", "FRUSTRATED", "DISTRESSED", "ANGRY"];
+
+    // Distribution
+    const distribution = labels.map((label) => {
+        const count = analyzed.filter((c) => c.sentimentLabel === label).length;
+        return { label, count, percentage: Math.round((count / analyzed.length) * 100) };
+    });
+
+    // Dominant emotion
+    const dominantEmotion = distribution.reduce((prev, curr) =>
+        curr.count > prev.count ? curr : prev
+    ).label;
+
+    // Average score
+    const avgScore = analyzed.reduce((sum, c) => sum + (c.sentimentScore || 0.5), 0) / analyzed.length;
+
+    // Trend: last 7 days
+    const trend = [];
+    for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const dayStr = date.toISOString().split("T")[0];
+        const dayComplaints = analyzed.filter((c) => c.createdAt.split("T")[0] === dayStr);
+        const entry: Record<string, unknown> = { date: dayStr };
+        for (const label of labels) {
+            entry[label] = dayComplaints.filter((c) => c.sentimentLabel === label).length;
+        }
+        trend.push(entry as { date: string; POSITIVE: number; NEUTRAL: number; FRUSTRATED: number; DISTRESSED: number; ANGRY: number });
+    }
+
+    // All analyzed complaints — sorted by emotional severity (ANGRY > DISTRESSED > FRUSTRATED > NEUTRAL > POSITIVE)
+    const SEVERITY_ORDER: Record<SentimentLabel, number> = {
+        ANGRY: 5, DISTRESSED: 4, FRUSTRATED: 3, NEUTRAL: 2, POSITIVE: 1,
+    };
+    const topDistressed = analyzed
+        .sort((a, b) => {
+            const aSev = SEVERITY_ORDER[a.sentimentLabel as SentimentLabel] || 0;
+            const bSev = SEVERITY_ORDER[b.sentimentLabel as SentimentLabel] || 0;
+            if (bSev !== aSev) return bSev - aSev;
+            return (b.sentimentScore || 0) - (a.sentimentScore || 0);
+        })
+        .slice(0, 50);
+
+    return {
+        totalAnalyzed: analyzed.length,
+        distribution,
+        trend,
+        topDistressed,
+        avgScore: Math.round(avgScore * 100) / 100,
+        dominantEmotion,
+    };
+}
+
+export async function updateComplaintSentiment(
+    id: string,
+    sentimentLabel: SentimentLabel,
+    sentimentScore: number,
+    emotionTags: string[],
+    empathyNote: string
+): Promise<void> {
+    await supabase
+        .from("complaints")
+        .update({
+            sentiment_label: sentimentLabel,
+            sentiment_score: sentimentScore,
+            emotion_tags: emotionTags,
+            empathy_note: empathyNote,
+            updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
 }

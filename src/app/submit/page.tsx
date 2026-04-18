@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { CATEGORY_LABELS, CATEGORY_ICONS, type ClassificationResult } from "@/lib/types";
+import { CATEGORY_LABELS, CATEGORY_ICONS, SENTIMENT_CONFIG, type ClassificationResult, type SentimentResult } from "@/lib/types";
 import { useAuth } from "@/context/AuthContext";
 
 export default function SubmitPage() {
@@ -22,6 +22,7 @@ export default function SubmitPage() {
         classification: ClassificationResult;
         priority: { score: number; level: string };
         department: string;
+        sentiment?: SentimentResult;
     } | null>(null);
     const [success, setSuccess] = useState<{ id: string } | null>(null);
 
@@ -127,6 +128,9 @@ export default function SubmitPage() {
         }
     };
 
+    const sentiment = aiPreview?.sentiment;
+    const sentimentCfg = sentiment ? SENTIMENT_CONFIG[sentiment.label] : null;
+
     return (
         <div className="page-container" style={{ maxWidth: "800px" }}>
             <AnimatePresence>
@@ -145,7 +149,7 @@ export default function SubmitPage() {
                             Your complaint ID: <strong style={{ color: "#a78bfa" }}>{success.id}</strong>
                         </p>
                         <p style={{ color: "var(--text-secondary)", marginBottom: "2rem", fontSize: "0.9rem" }}>
-                            AI has categorized and routed your complaint to the appropriate department.
+                            AI has categorized, analyzed sentiment, and routed your complaint to the appropriate department.
                         </p>
                         <div style={{ display: "flex", gap: "1rem" }}>
                             <button
@@ -179,8 +183,8 @@ export default function SubmitPage() {
                 <div className="page-header">
                     <h1>📝 Report a Civic Issue</h1>
                     <p>
-                        Describe the problem and our AI will automatically categorize, prioritize, and
-                        route it to the right department.
+                        Describe the problem and our AI will automatically categorize, prioritize, analyze
+                        your sentiment, and route it to the right department.
                     </p>
                 </div>
 
@@ -281,7 +285,7 @@ export default function SubmitPage() {
                             >
                                 <p style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>📷</p>
                                 <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>
-                                    Click to upload or drag & drop
+                                    Click to upload or drag &amp; drop
                                 </p>
                                 <p style={{ color: "var(--text-muted)", fontSize: "0.8rem", marginTop: "0.25rem" }}>
                                     JPG, PNG, WebP, GIF up to 5MB
@@ -290,7 +294,7 @@ export default function SubmitPage() {
                         )}
                     </div>
 
-                    {/* AI Classification Preview */}
+                    {/* AI Classification + Sentiment Preview */}
                     <AnimatePresence>
                         {(aiPreview || classifying) && (
                             <motion.div
@@ -301,44 +305,93 @@ export default function SubmitPage() {
                                 transition={{ duration: 0.3 }}
                             >
                                 <h4>
-                                    🤖 AI Classification Preview
+                                    🤖 AI Analysis Preview
                                     {classifying && <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2, marginLeft: 8, display: "inline-block" }} />}
                                 </h4>
 
                                 {aiPreview && (
-                                    <div className="ai-preview-grid">
-                                        <div className="ai-preview-item">
-                                            <div className="label">Category</div>
-                                            <div className="value">
-                                                {CATEGORY_ICONS[aiPreview.classification.category]}{" "}
-                                                {CATEGORY_LABELS[aiPreview.classification.category]}
+                                    <>
+                                        {/* Classification grid */}
+                                        <div className="ai-preview-grid">
+                                            <div className="ai-preview-item">
+                                                <div className="label">Category</div>
+                                                <div className="value">
+                                                    {CATEGORY_ICONS[aiPreview.classification.category]}{" "}
+                                                    {CATEGORY_LABELS[aiPreview.classification.category]}
+                                                </div>
+                                            </div>
+                                            <div className="ai-preview-item">
+                                                <div className="label">Priority</div>
+                                                <div className="value">
+                                                    <span className={`badge badge-${aiPreview.priority.level.toLowerCase()}`}>
+                                                        {aiPreview.priority.level}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="ai-preview-item">
+                                                <div className="label">Score</div>
+                                                <div className="value">{aiPreview.priority.score}/10</div>
+                                            </div>
+                                            <div className="ai-preview-item">
+                                                <div className="label">Department</div>
+                                                <div className="value" style={{ fontSize: "0.85rem" }}>{aiPreview.department}</div>
+                                            </div>
+                                            <div className="ai-preview-item">
+                                                <div className="label">Confidence</div>
+                                                <div className="value">{Math.round(aiPreview.classification.confidence * 100)}%</div>
+                                            </div>
+                                            <div className="ai-preview-item">
+                                                <div className="label">People Affected</div>
+                                                <div className="value">~{aiPreview.classification.estimatedPeopleAffected}</div>
                                             </div>
                                         </div>
-                                        <div className="ai-preview-item">
-                                            <div className="label">Priority</div>
-                                            <div className="value">
-                                                <span className={`badge badge-${aiPreview.priority.level.toLowerCase()}`}>
-                                                    {aiPreview.priority.level}
-                                                </span>
+
+                                        {/* Sentiment section */}
+                                        {sentiment && sentimentCfg && (
+                                            <div
+                                                className="sentiment-preview-block"
+                                                style={{
+                                                    marginTop: "1rem",
+                                                    padding: "1rem",
+                                                    borderRadius: "10px",
+                                                    background: sentimentCfg.bg,
+                                                    border: `1px solid ${sentimentCfg.border}`,
+                                                }}
+                                            >
+                                                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.6rem" }}>
+                                                    <span style={{ fontSize: "1.6rem" }}>{sentimentCfg.emoji}</span>
+                                                    <div>
+                                                        <div style={{ fontWeight: 700, color: sentimentCfg.color, fontSize: "0.95rem" }}>
+                                                            Emotional Tone: {sentiment.label}
+                                                        </div>
+                                                        <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                                                            {sentimentCfg.description}
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ marginLeft: "auto", textAlign: "right" }}>
+                                                        <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Confidence</div>
+                                                        <div style={{ fontWeight: 700, color: sentimentCfg.color }}>
+                                                            {Math.round(sentiment.score * 100)}%
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {sentiment.emotionTags.length > 0 && (
+                                                    <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginBottom: "0.6rem" }}>
+                                                        {sentiment.emotionTags.map((tag) => (
+                                                            <span key={tag} className="emotion-tag">{tag}</span>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {sentiment.empathyNote && (
+                                                    <p style={{ fontSize: "0.82rem", color: "var(--text-secondary)", fontStyle: "italic", margin: 0 }}>
+                                                        💬 &quot;{sentiment.empathyNote}&quot;
+                                                    </p>
+                                                )}
                                             </div>
-                                        </div>
-                                        <div className="ai-preview-item">
-                                            <div className="label">Score</div>
-                                            <div className="value">{aiPreview.priority.score}/10</div>
-                                        </div>
-                                        <div className="ai-preview-item">
-                                            <div className="label">Department</div>
-                                            <div className="value" style={{ fontSize: "0.85rem" }}>{aiPreview.department}</div>
-                                        </div>
-                                        <div className="ai-preview-item">
-                                            <div className="label">Confidence</div>
-                                            <div className="value">{Math.round(aiPreview.classification.confidence * 100)}%</div>
-                                        </div>
-                                        <div className="ai-preview-item">
-                                            <div className="label">People Affected</div>
-                                            <div className="value">~{aiPreview.classification.estimatedPeopleAffected}</div>
-                                        </div>
-                                    </div>
+                                        )}
+                                    </>
                                 )}
                             </motion.div>
                         )}

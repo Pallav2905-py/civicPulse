@@ -23,7 +23,12 @@ CREATE TABLE IF NOT EXISTS complaints (
     estimated_resolution TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    resolved_at TIMESTAMPTZ
+    resolved_at TIMESTAMPTZ,
+    -- ===== SENTIMENT ANALYSIS FIELDS =====
+    sentiment_label TEXT DEFAULT 'NEUTRAL',
+    sentiment_score DOUBLE PRECISION DEFAULT 0.5,
+    emotion_tags JSONB DEFAULT '[]'::jsonb,
+    empathy_note TEXT DEFAULT ''
 );
 
 -- ===== STATUS UPDATES TABLE =====
@@ -56,6 +61,7 @@ CREATE INDEX IF NOT EXISTS idx_complaints_department ON complaints(department);
 CREATE INDEX IF NOT EXISTS idx_complaints_created_at ON complaints(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_status_updates_complaint ON status_updates(complaint_id);
 CREATE INDEX IF NOT EXISTS idx_feedbacks_complaint ON feedbacks(complaint_id);
+CREATE INDEX IF NOT EXISTS idx_complaints_sentiment ON complaints(sentiment_label);
 
 -- ===== ROW LEVEL SECURITY =====
 -- Disable RLS for hackathon demo (enable for production)

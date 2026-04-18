@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllComplaints, createComplaint, awardXP } from "@/lib/db";
-import { classifyComplaint, calculatePriorityScore, getEstimatedResolution, getDepartment } from "@/lib/ai";
+import { classifyComplaint, calculatePriorityScore, getEstimatedResolution, getDepartment, analyzeSentiment } from "@/lib/ai";
 import { ComplaintCategory } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
@@ -29,15 +29,29 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // AI Classification
-        const classification = await classifyComplaint(title, description);
+        // Run AI classification and sentiment analysis in parallel
+        const [classification, sentiment] = await Promise.all([
+            classifyComplaint(title, description),
+            analyzeSentiment(title, description),
+        ]);
 
-        // Priority Scoring
-        const priority = calculatePriorityScore(
+        // Priority Scoring — with sentiment boost for ANGRY/DISTRESSED citizens
+        let priority = calculatePriorityScore(
             classification.urgencyLevel,
             classification.affectedAreaSize,
             classification.estimatedPeopleAffected
         );
+
+        // Sentiment-based priority boost: distressed/angry citizens get escalated faster
+        if (sentiment.label === "ANGRY" || sentiment.label === "DISTRESSED") {
+            const boostedScore = Math.min(10, priority.score + 1.5);
+            let boostedLevel: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" = priority.level;
+            if (boostedScore >= 8) boostedLevel = "CRITICAL";
+            else if (boostedScore >= 6) boostedLevel = "HIGH";
+            else if (boostedScore >= 4) boostedLevel = "MEDIUM";
+            else boostedLevel = "LOW";
+            priority = { score: Math.round(boostedScore * 10) / 10, level: boostedLevel };
+        }
 
         // Department Routing
         const department = getDepartment(classification.category);
@@ -64,6 +78,11 @@ export async function POST(request: NextRequest) {
             estimatedResolution,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
+            // Sentiment data
+            sentimentLabel: sentiment.label,
+            sentimentScore: sentiment.score,
+            emotionTags: sentiment.emotionTags,
+            empathyNote: sentiment.empathyNote,
         });
 
         // Award XP (fire and forget)
@@ -78,6 +97,7 @@ export async function POST(request: NextRequest) {
             classification,
             priority,
             department,
+            sentiment,
         }, { status: 201 });
     } catch {
         return NextResponse.json(
