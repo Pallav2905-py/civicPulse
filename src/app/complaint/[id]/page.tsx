@@ -11,6 +11,7 @@ import {
     type StatusUpdate,
     type Feedback,
 } from "@/lib/types";
+import StreetView from "@/components/StreetView";
 
 export default function ComplaintDetailPage({
     params,
@@ -216,6 +217,15 @@ export default function ComplaintDetailPage({
                                     </div>
                                 </div>
                             )}
+
+                            {/* Street View Integration */}
+                            <div style={{ marginTop: "1.25rem" }}>
+                                <StreetView 
+                                    latitude={complaint.latitude} 
+                                    longitude={complaint.longitude} 
+                                    height={300}
+                                />
+                            </div>
                         </div>
 
                         {/* Status Timeline */}
